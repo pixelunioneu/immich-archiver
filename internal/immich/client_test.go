@@ -36,7 +36,7 @@ func TestSearchAssetsPaginates(t *testing.T) {
 		}
 		idx := atomic.AddInt32(&call, 1) - 1
 		w.Header().Set("Content-Type", "application/json")
-		w.Write(pages[idx])
+		_, _ = w.Write(pages[idx])
 	})
 
 	var got []string
@@ -58,7 +58,7 @@ func TestSearchAssetsPaginates(t *testing.T) {
 func TestSearchAssetsPreservesRawJSON(t *testing.T) {
 	body := `{"assets":{"total":1,"count":1,"items":[{"id":"a1","originalFileName":"a1.jpg","exifInfo":{"make":"Canon"}}],"nextPage":null}}`
 	c, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(body))
+		_, _ = w.Write([]byte(body))
 	})
 
 	var raw json.RawMessage
@@ -87,7 +87,7 @@ func TestDoJSONRetriesOn5xxThenSucceeds(t *testing.T) {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"res":"pong"}`))
+		_, _ = w.Write([]byte(`{"res":"pong"}`))
 	})
 	c.Retries = 3
 
@@ -120,7 +120,7 @@ func TestDoJSONDoesNotRetryOn4xx(t *testing.T) {
 	c, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 		atomic.AddInt32(&call, 1)
 		w.WriteHeader(http.StatusUnauthorized)
-		w.Write([]byte(`{"message":"invalid api key"}`))
+		_, _ = w.Write([]byte(`{"message":"invalid api key"}`))
 	})
 	c.Retries = 3
 
@@ -138,7 +138,7 @@ func TestDownloadOriginal(t *testing.T) {
 		if r.URL.Path != "/api/assets/asset-123/original" {
 			t.Fatalf("unexpected path: %s", r.URL.Path)
 		}
-		w.Write(want)
+		_, _ = w.Write(want)
 	})
 
 	rc, err := c.DownloadOriginal(context.Background(), "asset-123")
@@ -160,7 +160,7 @@ func TestListAlbumsSharedFilter(t *testing.T) {
 		if r.URL.Query().Get("shared") != "true" {
 			t.Fatalf("expected shared=true query param, got %s", r.URL.RawQuery)
 		}
-		w.Write([]byte(`[{"id":"al1","albumName":"Family","shared":true}]`))
+		_, _ = w.Write([]byte(`[{"id":"al1","albumName":"Family","shared":true}]`))
 	})
 
 	albums, err := c.ListAlbums(context.Background(), true)

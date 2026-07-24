@@ -59,7 +59,9 @@ func newRootCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&f.dryRun, "dry-run", false, "list what would be downloaded without writing anything")
 	cmd.Flags().BoolVarP(&f.verbose, "verbose", "v", false, "log a line per asset instead of showing a progress bar")
 
-	cmd.MarkFlagRequired("dir")
+	if err := cmd.MarkFlagRequired("dir"); err != nil {
+		panic(err)
+	}
 
 	return cmd
 }

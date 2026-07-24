@@ -84,8 +84,10 @@ func TestDownloadToFileNeverExposesPartialFileUnderFinalName(t *testing.T) {
 
 	done := make(chan struct{})
 	go func() {
-		DownloadToFile(context.Background(), fetch, "asset-1", dir, "photo.jpg", 3, time.Millisecond)
-		close(done)
+		defer close(done)
+		if err := DownloadToFile(context.Background(), fetch, "asset-1", dir, "photo.jpg", 3, time.Millisecond); err != nil {
+			t.Error(err)
+		}
 	}()
 	<-done
 
