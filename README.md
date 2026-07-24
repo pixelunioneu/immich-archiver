@@ -56,9 +56,13 @@ go test -tags integration ./...  # requires IMMICH_TEST_URL / IMMICH_TEST_API_KE
 
 ## Releases
 
-Pushing a `vX.Y.Z` tag triggers [GoReleaser](https://goreleaser.com) to build binaries for
-Linux, macOS, and Windows (amd64/arm64) and publish a GitHub Release. The latest release is
-always listed at the project's GitHub Pages site.
+Fully automated: every push to `main` that passes CI gets a release, with the patch version
+auto-bumped (`v0.1.0` -> `v0.1.1` -> ...). [GoReleaser](https://goreleaser.com) then builds
+binaries for Linux, macOS, and Windows (amd64/arm64) and publishes a GitHub Release. The latest
+release is always listed at the project's GitHub Pages site.
+
+To cut a minor or major release instead of the next patch, push that tag yourself
+(`git tag v1.0.0 && git push --tags`) — auto-bumping picks up from the new baseline afterward.
 
 ## License
 

@@ -1,9 +1,18 @@
 name: Release
 
+# Fully automated: every push to main that passes CI gets a release. The
+# patch version is auto-bumped (v0.1.0 -> v0.1.1 -> ...). To cut a minor or
+# major release instead, push that tag yourself (e.g. `git tag v1.0.0 && git
+# push --tags`) — the "push: tags" trigger below still fires for that, and
+# auto-bumping then continues patch-incrementing from the new baseline.
 on:
   push:
     tags:
       - "v[0-9]+.[0-9]+.[0-9]+"
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
 
 permissions:
   contents: write
@@ -11,11 +20,42 @@ permissions:
   id-token: write
 
 jobs:
+  autotag:
+    if: github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+
+      - name: Compute next patch version and tag it
+        id: tag
+        run: |
+          set -euo pipefail
+          last=$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -n1)
+          if [ -z "$last" ]; then
+            next="v0.1.0"
+          else
+            IFS='.' read -r major minor patch <<< "${last#v}"
+            next="v${major}.${minor}.$((patch + 1))"
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "$next" -m "Release $next"
+          git push origin "$next"
+          echo "tag=$next" >> "$GITHUB_OUTPUT"
+
   goreleaser:
+    needs: [autotag]
+    if: always() && (github.event_name == 'push' || needs.autotag.result == 'success')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ needs.autotag.outputs.tag || github.ref }}
           fetch-depth: 0
 
       - uses: actions/setup-go@v5
