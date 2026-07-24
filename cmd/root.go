@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/pixelunioneu/immich-archiver/internal/archive"
@@ -42,6 +43,9 @@ func newRootCmd() *cobra.Command {
 		Version:       version,
 		SilenceUsage:  true,
 		SilenceErrors: true,
+		PreRunE: func(cmd *cobra.Command, args []string) error {
+			return validateFlags(cmd, f)
+		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runSync(cmd, f)
 		},
@@ -49,7 +53,7 @@ func newRootCmd() *cobra.Command {
 
 	cmd.Flags().StringVar(&f.url, "url", os.Getenv("IMMICH_URL"), "Immich server URL (env IMMICH_URL)")
 	cmd.Flags().StringVar(&f.apiKey, "api-key", os.Getenv("IMMICH_API_KEY"), "Immich user API key (env IMMICH_API_KEY)")
-	cmd.Flags().StringVar(&f.dir, "dir", "", "destination root directory (required)")
+	cmd.Flags().StringVar(&f.dir, "dir", os.Getenv("IMMICH_DIR"), "destination root directory (required, env IMMICH_DIR)")
 	cmd.Flags().StringVar(&f.pathTemplate, "path-template", archive.DefaultPathTemplate, "folder structure template; supports {year}, {month}, {day}")
 	cmd.Flags().BoolVar(&f.includeShared, "include-shared", false, "also mirror assets shared with you into a separate folder")
 	cmd.Flags().StringVar(&f.sharedDir, "shared-dir", "", "destination root for shared assets (default: <dir>/shared-with-me)")
@@ -59,21 +63,31 @@ func newRootCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&f.dryRun, "dry-run", false, "list what would be downloaded without writing anything")
 	cmd.Flags().BoolVarP(&f.verbose, "verbose", "v", false, "log a line per asset instead of showing a progress bar")
 
-	if err := cmd.MarkFlagRequired("dir"); err != nil {
-		panic(err)
-	}
-
 	return cmd
 }
 
-func runSync(cmd *cobra.Command, f *flags) error {
+// validateFlags checks required inputs before RunE. Failures print the full
+// usage/help text (unlike runtime errors from RunE, which stay terse) so a
+// missing/misspelled flag is immediately actionable.
+func validateFlags(cmd *cobra.Command, f *flags) error {
+	var missing []string
+	if f.dir == "" {
+		missing = append(missing, "--dir (or IMMICH_DIR)")
+	}
 	if f.url == "" {
-		return fmt.Errorf("an Immich server URL is required: pass --url or set IMMICH_URL")
+		missing = append(missing, "--url (or IMMICH_URL)")
 	}
 	if f.apiKey == "" {
-		return fmt.Errorf("an Immich API key is required: pass --api-key or set IMMICH_API_KEY")
+		missing = append(missing, "--api-key (or IMMICH_API_KEY)")
 	}
+	if len(missing) == 0 {
+		return nil
+	}
+	_, _ = fmt.Fprintln(cmd.OutOrStderr(), cmd.UsageString())
+	return fmt.Errorf("missing required flag(s): %s", strings.Join(missing, ", "))
+}
 
+func runSync(cmd *cobra.Command, f *flags) error {
 	client := immich.NewClient(f.url, f.apiKey)
 	client.Retries = f.retries
 

@@ -9,8 +9,11 @@ Immich-go-style sidecar JSON carrying the full original asset metadata.
 ```sh
 export IMMICH_URL=https://photos.example.com
 export IMMICH_API_KEY=your-user-api-key
+export IMMICH_DIR=/path/to/archive
 
-immich-archiver --dir /path/to/archive  # --dir is required
+immich-archiver
+# or, without env vars:
+immich-archiver --url https://photos.example.com --api-key your-user-api-key --dir /path/to/archive
 ```
 
 On a second run, assets already present on disk (verified by filename + a matching asset ID in
@@ -34,9 +37,9 @@ Live Photos are downloaded as a still + a paired motion video sharing the same b
 
 | Flag | Default | Description |
 |---|---|---|
-| `--url` | `$IMMICH_URL` | Immich server URL |
-| `--api-key` | `$IMMICH_API_KEY` | Immich user API key |
-| `--dir` | *(required)* | destination root directory |
+| `--url` | *(required)* | Immich server URL (env `IMMICH_URL`) |
+| `--api-key` | *(required)* | Immich user API key (env `IMMICH_API_KEY`) |
+| `--dir` | *(required)* | destination root directory (env `IMMICH_DIR`) |
 | `--path-template` | `{year}/{year}-{month}` | folder structure template |
 | `--include-shared` | `false` | also mirror assets from albums shared with you |
 | `--shared-dir` | `<dir>/shared-with-me` | destination root for shared assets |
