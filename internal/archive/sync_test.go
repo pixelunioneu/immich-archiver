@@ -233,6 +233,48 @@ func TestSyncerLivePhotoPairing(t *testing.T) {
 	}
 }
 
+// TestSyncerSharedLivePhotoVideoNotRaced reproduces a Google-Takeout-style
+// import where multiple still assets reference the same live-photo video
+// asset ID. Without per-asset locking, the two workers race to write
+// "<filename>.part" for the shared video: whichever worker renames it into
+// place first removes the temp file, so the other worker's rename fails
+// with "no such file or directory" instead of the second still simply
+// seeing the video already downloaded.
+func TestSyncerSharedLivePhotoVideoNotRaced(t *testing.T) {
+	dir := t.TempDir()
+	src := newFakeSource()
+	video := mustAsset(t, "video-1", "PXL_shared.MP.mp4", "2005-06-15T10:00:00.000Z", nil)
+	src.byID["video-1"] = video
+	src.files["video-1"] = "video-bytes"
+
+	// Two distinct assets with the *same* original filename (a duplicated
+	// Takeout import) both referencing the same live-photo video. The video's
+	// target filename is derived from each still's original filename, so both
+	// workers compute the identical target for the shared video even though
+	// the stills themselves get deduped to different on-disk names.
+	for _, id := range []string{"still-1", "still-2"} {
+		still := mustAsset(t, id, "PXL_shared.MP.jpg", "2005-06-15T10:00:00.000Z", map[string]any{"livePhotoVideoId": "video-1"})
+		src.add(still, fmt.Sprintf("still-bytes-%s", id))
+	}
+
+	opts := baseOptions(dir)
+	opts.Concurrency = 8
+	s := &Syncer{Source: src, Options: opts}
+
+	stats, err := s.Run(context.Background())
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if stats.Failed != 0 {
+		t.Fatalf("expected no failures racing on the shared video, got %+v", stats)
+	}
+	// 2 stills + 1 shared video downloaded once (the second still's video
+	// download is a skip once the lock is released).
+	if stats.Downloaded != 3 || stats.Skipped != 1 {
+		t.Fatalf("stats = %+v, want 3 downloaded + 1 skipped", stats)
+	}
+}
+
 func TestSyncerSharedAlbumsIntoSeparateRoot(t *testing.T) {
 	rootDir := t.TempDir()
 	sharedDir := filepath.Join(rootDir, "shared-with-me")

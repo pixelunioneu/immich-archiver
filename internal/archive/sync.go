@@ -73,6 +73,39 @@ type Syncer struct {
 	Source   Source
 	Options  Options
 	Reporter Reporter
+
+	downloadLocks keyedMutex
+}
+
+// keyedMutex hands out a per-key lock so callers can serialize work on the
+// same key without blocking unrelated keys. Its zero value is ready to use.
+//
+// This exists because a live-photo video asset can be referenced by more
+// than one still asset (common in Google Takeout imports with duplicated
+// motion-photo pairs). Without per-asset locking, two workers could race to
+// download the same video into the same "<filename>.part" temp file: one
+// worker's successful rename would remove the temp file out from under the
+// other, which then failed with "no such file or directory".
+type keyedMutex struct {
+	mu    sync.Mutex
+	locks map[string]*sync.Mutex
+}
+
+// Lock blocks until key is uncontended, then returns a function to release it.
+func (k *keyedMutex) Lock(key string) func() {
+	k.mu.Lock()
+	if k.locks == nil {
+		k.locks = make(map[string]*sync.Mutex)
+	}
+	l, ok := k.locks[key]
+	if !ok {
+		l = &sync.Mutex{}
+		k.locks[key] = l
+	}
+	k.mu.Unlock()
+
+	l.Lock()
+	return l.Unlock
 }
 
 // Run walks the owned library (and, if enabled, shared albums) and
@@ -190,6 +223,15 @@ func (s *Syncer) processAsset(ctx context.Context, a *immich.Asset, rootDir, tmp
 }
 
 func (s *Syncer) downloadOne(ctx context.Context, a *immich.Asset, dir, desiredName string, report func(Event)) {
+	// Lock on the target namespace, not just the asset ID: ResolveDestination
+	// does a check-then-act filesystem scan, so two different assets that
+	// want the same desiredName (e.g. duplicate stills sharing one
+	// live-photo video, or literal duplicate imports) can otherwise race on
+	// the same candidate path just as easily as two calls for the same
+	// asset ID can.
+	unlock := s.downloadLocks.Lock(filepath.Join(dir, desiredName))
+	defer unlock()
+
 	filename, exists, err := ResolveDestination(dir, desiredName, a.ID)
 	if err != nil {
 		report(Event{AssetID: a.ID, Filename: desiredName, Action: ActionFailed, Err: err})
