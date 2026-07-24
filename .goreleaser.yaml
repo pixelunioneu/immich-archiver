@@ -25,10 +25,7 @@ builds:
 
 archives:
   - id: immich-archiver
-    formats: [tar.gz]
-    format_overrides:
-      - goos: windows
-        formats: [zip]
+    formats: [binary]
     name_template: >-
       {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
 
