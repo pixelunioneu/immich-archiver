@@ -1,0 +1,26 @@
+[tools]
+go = "1.25.5"
+
+[tasks.build]
+description = "Build the immich-archiver binary"
+run = "go build -o immich-archiver ."
+
+[tasks.test]
+description = "Run unit tests (mocked Immich API only)"
+run = "go test ./... -race -count=1"
+
+[tasks."test:integration"]
+description = "Run tests against a live Immich instance (needs IMMICH_TEST_URL / IMMICH_TEST_API_KEY)"
+run = "go test -tags integration ./... -count=1 -v"
+
+[tasks.vet]
+description = "Run go vet"
+run = "go vet ./..."
+
+[tasks.lint]
+description = "Run golangci-lint"
+run = "golangci-lint run"
+
+[tasks.check]
+description = "Run vet, lint, and unit tests"
+depends = ["vet", "lint", "test"]

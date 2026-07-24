@@ -1,0 +1,28 @@
+name: Live Immich integration tests
+
+# Non-blocking: runs against a real Immich instance on a schedule or by hand.
+# Never required for PR checks or Dependabot auto-merge, since a flaky/
+# offline home server shouldn't be able to block everyone else's merges.
+on:
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: go test -tags integration
+        env:
+          IMMICH_TEST_URL: ${{ secrets.IMMICH_TEST_URL }}
+          IMMICH_TEST_API_KEY: ${{ secrets.IMMICH_TEST_API_KEY }}
+        run: go test -tags integration ./... -count=1 -v
