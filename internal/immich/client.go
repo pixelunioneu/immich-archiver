@@ -87,17 +87,17 @@ func (c *Client) doJSON(ctx context.Context, method, path string, body, out any)
 		}
 
 		if resp.StatusCode >= 500 {
-			resp.Body.Close()
+			_ = resp.Body.Close()
 			lastErr = fmt.Errorf("server returned %s for %s %s", resp.Status, method, path)
 			continue
 		}
 		if resp.StatusCode >= 400 {
 			data, _ := io.ReadAll(resp.Body)
-			resp.Body.Close()
+			_ = resp.Body.Close()
 			return fmt.Errorf("%s %s: %s: %s", method, path, resp.Status, string(data))
 		}
 
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		if out != nil {
 			if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
 				return fmt.Errorf("decoding response from %s %s: %w", method, path, err)
@@ -136,13 +136,13 @@ func (c *Client) downloadWithRetry(ctx context.Context, path string) (io.ReadClo
 			continue
 		}
 		if resp.StatusCode >= 500 {
-			resp.Body.Close()
+			_ = resp.Body.Close()
 			lastErr = fmt.Errorf("server returned %s for GET %s", resp.Status, path)
 			continue
 		}
 		if resp.StatusCode >= 400 {
 			data, _ := io.ReadAll(resp.Body)
-			resp.Body.Close()
+			_ = resp.Body.Close()
 			return nil, fmt.Errorf("GET %s: %s: %s", path, resp.Status, string(data))
 		}
 		return resp.Body, nil

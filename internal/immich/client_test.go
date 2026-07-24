@@ -145,7 +145,7 @@ func TestDownloadOriginal(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DownloadOriginal: %v", err)
 	}
-	defer rc.Close()
+	defer func() { _ = rc.Close() }()
 	got, err := io.ReadAll(rc)
 	if err != nil {
 		t.Fatalf("reading body: %v", err)

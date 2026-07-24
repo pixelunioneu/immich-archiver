@@ -46,26 +46,26 @@ func (p *progress) report(e archive.Event) {
 		}
 		switch e.Action {
 		case archive.ActionDownloaded, archive.ActionWouldFetch:
-			fmt.Fprintf(p.out, "%s %s\n", verb, e.Filename)
+			_, _ = fmt.Fprintf(p.out, "%s %s\n", verb, e.Filename)
 		case archive.ActionSkipped:
-			fmt.Fprintf(p.out, "skipped (already present) %s\n", e.Filename)
+			_, _ = fmt.Fprintf(p.out, "skipped (already present) %s\n", e.Filename)
 		case archive.ActionFailed:
-			fmt.Fprintf(p.out, "FAILED %s: %v\n", e.Filename, e.Err)
+			_, _ = fmt.Fprintf(p.out, "FAILED %s: %v\n", e.Filename, e.Err)
 		}
 		return
 	}
 
-	fmt.Fprintf(p.out, "\rdownloaded %d, skipped %d, failed %d",
+	_, _ = fmt.Fprintf(p.out, "\rdownloaded %d, skipped %d, failed %d",
 		atomic.LoadInt64(&p.downloaded), atomic.LoadInt64(&p.skipped), atomic.LoadInt64(&p.failed))
 }
 
 func (p *progress) finish(stats archive.Stats) {
 	if !p.verbose {
-		fmt.Fprintln(p.out)
+		_, _ = fmt.Fprintln(p.out)
 	}
 	verb := "Downloaded"
 	if p.dryRun {
 		verb = "Would download"
 	}
-	fmt.Fprintf(p.out, "%s: %d, skipped: %d, failed: %d\n", verb, stats.Downloaded, stats.Skipped, stats.Failed)
+	_, _ = fmt.Fprintf(p.out, "%s: %d, skipped: %d, failed: %d\n", verb, stats.Downloaded, stats.Skipped, stats.Failed)
 }

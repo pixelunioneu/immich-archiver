@@ -42,7 +42,7 @@ func DownloadToFile(ctx context.Context, fetch FileFetcher, assetID, dir, filena
 
 		if err := attemptDownload(ctx, fetch, assetID, tempPath); err != nil {
 			lastErr = err
-			os.Remove(tempPath)
+			_ = os.Remove(tempPath)
 			continue
 		}
 
@@ -59,13 +59,13 @@ func attemptDownload(ctx context.Context, fetch FileFetcher, assetID, tempPath s
 	if err != nil {
 		return fmt.Errorf("fetching asset %s: %w", assetID, err)
 	}
-	defer rc.Close()
+	defer func() { _ = rc.Close() }()
 
 	f, err := os.Create(tempPath)
 	if err != nil {
 		return fmt.Errorf("creating temp file %s: %w", tempPath, err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	if _, err := io.Copy(f, rc); err != nil {
 		return fmt.Errorf("writing %s: %w", tempPath, err)
