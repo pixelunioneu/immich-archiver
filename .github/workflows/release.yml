@@ -26,7 +26,7 @@ jobs:
     outputs:
       tag: ${{ steps.tag.outputs.tag }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
           fetch-depth: 0
@@ -53,7 +53,7 @@ jobs:
     if: always() && (github.event_name == 'push' || needs.autotag.result == 'success')
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ needs.autotag.outputs.tag || github.ref }}
           fetch-depth: 0
@@ -80,7 +80,7 @@ jobs:
     needs: goreleaser
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Render download page
         env:
