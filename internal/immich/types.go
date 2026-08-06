@@ -39,10 +39,17 @@ func (a *Asset) UnmarshalJSON(data []byte) error {
 }
 
 // SearchMetadataQuery is the request body for POST /search/metadata.
+//
+// WithExif and WithPeople matter more than they look: exifInfo and people are
+// optional fields on Immich's asset response, omitted (or left as an empty
+// array) unless explicitly requested. Since the sidecar is the server response
+// verbatim, leaving them unset silently strips capture date, camera make and
+// model, GPS coordinates, rating and faces from every sidecar we write.
 type SearchMetadataQuery struct {
 	Page        int    `json:"page"`
 	Size        int    `json:"size,omitempty"`
 	WithExif    bool   `json:"withExif,omitempty"`
+	WithPeople  bool   `json:"withPeople,omitempty"`
 	WithDeleted bool   `json:"withDeleted,omitempty"`
 	IsArchived  *bool  `json:"isArchived,omitempty"`
 	PersonalOwn bool   `json:"-"` // filtered client-side, Immich search has no such flag

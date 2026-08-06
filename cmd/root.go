@@ -26,6 +26,7 @@ type flags struct {
 	concurrency        int
 	retries            int
 	dryRun             bool
+	refreshSidecars    bool
 	verbose            bool
 }
 
@@ -61,6 +62,7 @@ func newRootCmd() *cobra.Command {
 	cmd.Flags().IntVar(&f.concurrency, "concurrency", 4, "number of assets to download in parallel")
 	cmd.Flags().IntVar(&f.retries, "retries", 3, "number of retry attempts for failed downloads/requests")
 	cmd.Flags().BoolVar(&f.dryRun, "dry-run", false, "list what would be downloaded without writing anything")
+	cmd.Flags().BoolVar(&f.refreshSidecars, "refresh-sidecars", false, "rewrite the .json sidecar of assets already on disk (originals are not re-downloaded)")
 	cmd.Flags().BoolVarP(&f.verbose, "verbose", "v", false, "log a line per asset instead of showing a progress bar")
 
 	return cmd
@@ -103,7 +105,7 @@ func runSync(cmd *cobra.Command, f *flags) error {
 		sharedDir = f.dir + string(os.PathSeparator) + "shared-with-me"
 	}
 
-	p := newProgress(cmd.OutOrStdout(), f.verbose, f.dryRun)
+	p := newProgress(cmd.OutOrStdout(), f.verbose, f.dryRun, f.refreshSidecars)
 	s := &archive.Syncer{
 		Source: client,
 		Options: archive.Options{
@@ -116,6 +118,7 @@ func runSync(cmd *cobra.Command, f *flags) error {
 			Retries:            f.retries,
 			RetryDelay:         2 * time.Second,
 			DryRun:             f.dryRun,
+			RefreshSidecars:    f.refreshSidecars,
 		},
 		Reporter: p.report,
 	}

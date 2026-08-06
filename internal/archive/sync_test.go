@@ -21,6 +21,8 @@ type fakeSource struct {
 	files     map[string]string // asset id -> file content
 	albums    []immich.Album
 	albumAsts map[string][]*immich.Asset
+
+	lastQuery immich.SearchMetadataQuery
 }
 
 func newFakeSource() *fakeSource {
@@ -59,6 +61,7 @@ func (f *fakeSource) add(a *immich.Asset, content string) {
 }
 
 func (f *fakeSource) SearchAssets(ctx context.Context, query immich.SearchMetadataQuery, fn func(*immich.Asset) error) error {
+	f.lastQuery = query
 	for _, a := range f.assets {
 		if err := fn(a); err != nil {
 			return err
@@ -135,6 +138,117 @@ func TestSyncerDownloadsAndWritesSidecar(t *testing.T) {
 	var decoded map[string]any
 	if err := json.Unmarshal(sidecar, &decoded); err != nil || decoded["id"] != "a1" {
 		t.Fatalf("sidecar content wrong: %s", sidecar)
+	}
+}
+
+// Immich omits exifInfo and leaves people empty unless the search asks for
+// them, and the sidecar is that response verbatim — so forgetting these flags
+// silently strips capture date, camera, GPS, rating and faces from every
+// sidecar written.
+func TestSyncerRequestsExifAndPeople(t *testing.T) {
+	dir := t.TempDir()
+	src := newFakeSource()
+	src.add(mustAsset(t, "a1", "IMG_0001.jpg", "2005-06-15T10:00:00.000Z", nil), "photo-bytes")
+
+	s := &Syncer{Source: src, Options: baseOptions(dir)}
+	if _, err := s.Run(context.Background()); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if !src.lastQuery.WithExif {
+		t.Error("search query did not set withExif")
+	}
+	if !src.lastQuery.WithPeople {
+		t.Error("search query did not set withPeople")
+	}
+}
+
+func TestSyncerRefreshSidecarsRewritesExistingSidecar(t *testing.T) {
+	dir := t.TempDir()
+	src := newFakeSource()
+	src.add(mustAsset(t, "a1", "IMG_0001.jpg", "2005-06-15T10:00:00.000Z", map[string]any{
+		"exifInfo": map[string]any{"make": "Canon"},
+	}), "photo-bytes")
+
+	// Simulate an archive written by an older version: original in place,
+	// sidecar missing the metadata.
+	assetDir := filepath.Join(dir, "2005", "2005-06")
+	if err := os.MkdirAll(assetDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(assetDir, "IMG_0001.jpg")
+	if err := os.WriteFile(target, []byte("photo-bytes"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(target+".json", []byte(`{"id":"a1"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	opts := baseOptions(dir)
+	opts.RefreshSidecars = true
+	s := &Syncer{Source: src, Options: opts}
+	stats, err := s.Run(context.Background())
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if stats.Refreshed != 1 || stats.Downloaded != 0 || stats.Skipped != 0 {
+		t.Fatalf("stats = %+v", stats)
+	}
+
+	sidecar, err := os.ReadFile(target + ".json")
+	if err != nil {
+		t.Fatalf("reading sidecar: %v", err)
+	}
+	var decoded map[string]any
+	if err := json.Unmarshal(sidecar, &decoded); err != nil {
+		t.Fatalf("sidecar not valid JSON: %s", sidecar)
+	}
+	if decoded["exifInfo"] == nil {
+		t.Fatalf("sidecar was not refreshed with exifInfo: %s", sidecar)
+	}
+
+	// The original must not be re-downloaded or otherwise disturbed.
+	data, err := os.ReadFile(target)
+	if err != nil || string(data) != "photo-bytes" {
+		t.Fatalf("original file changed: %q %v", data, err)
+	}
+}
+
+func TestSyncerRefreshSidecarsDryRunWritesNothing(t *testing.T) {
+	dir := t.TempDir()
+	src := newFakeSource()
+	src.add(mustAsset(t, "a1", "IMG_0001.jpg", "2005-06-15T10:00:00.000Z", map[string]any{
+		"exifInfo": map[string]any{"make": "Canon"},
+	}), "photo-bytes")
+
+	assetDir := filepath.Join(dir, "2005", "2005-06")
+	if err := os.MkdirAll(assetDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(assetDir, "IMG_0001.jpg")
+	if err := os.WriteFile(target, []byte("photo-bytes"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(target+".json", []byte(`{"id":"a1"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	opts := baseOptions(dir)
+	opts.RefreshSidecars = true
+	opts.DryRun = true
+	s := &Syncer{Source: src, Options: opts}
+	stats, err := s.Run(context.Background())
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if stats.Refreshed != 1 {
+		t.Fatalf("stats = %+v", stats)
+	}
+	sidecar, err := os.ReadFile(target + ".json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(sidecar) != `{"id":"a1"}` {
+		t.Fatalf("dry run rewrote sidecar: %s", sidecar)
 	}
 }
 

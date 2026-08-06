@@ -33,6 +33,13 @@ type Options struct {
 	Retries            int
 	RetryDelay         time.Duration
 	DryRun             bool
+
+	// RefreshSidecars rewrites the sidecar of an asset already on disk
+	// instead of skipping it outright. Without this, an archive built by an
+	// older version keeps its sidecars forever: assets present on disk never
+	// reach the write path, so a metadata fix only ever reaches newly
+	// downloaded files. Original files are still never re-downloaded.
+	RefreshSidecars bool
 }
 
 const unknownDateDir = "unknown-date"
@@ -45,6 +52,7 @@ const (
 	ActionDownloaded Action = "downloaded"
 	ActionSkipped    Action = "skipped"     // already present on disk
 	ActionWouldFetch Action = "would-fetch" // dry-run
+	ActionRefreshed  Action = "refreshed"   // file kept, sidecar rewritten
 	ActionFailed     Action = "failed"
 )
 
@@ -65,6 +73,7 @@ type Reporter func(Event)
 type Stats struct {
 	Downloaded int
 	Skipped    int
+	Refreshed  int
 	Failed     int
 }
 
@@ -120,6 +129,8 @@ func (s *Syncer) Run(ctx context.Context) (Stats, error) {
 			stats.Downloaded++
 		case ActionSkipped:
 			stats.Skipped++
+		case ActionRefreshed:
+			stats.Refreshed++
 		case ActionFailed:
 			stats.Failed++
 		}
@@ -147,7 +158,12 @@ func (s *Syncer) Run(ctx context.Context) (Stats, error) {
 		}()
 	}
 
-	err := s.Source.SearchAssets(ctx, immich.SearchMetadataQuery{WithDeleted: false, IsArchived: nil}, func(a *immich.Asset) error {
+	err := s.Source.SearchAssets(ctx, immich.SearchMetadataQuery{
+		WithDeleted: false,
+		IsArchived:  nil,
+		WithExif:    true,
+		WithPeople:  true,
+	}, func(a *immich.Asset) error {
 		if a.IsTrashed {
 			return nil
 		}
@@ -238,7 +254,19 @@ func (s *Syncer) downloadOne(ctx context.Context, a *immich.Asset, dir, desiredN
 		return
 	}
 	if exists {
-		report(Event{AssetID: a.ID, Filename: filename, Action: ActionSkipped})
+		if !s.Options.RefreshSidecars {
+			report(Event{AssetID: a.ID, Filename: filename, Action: ActionSkipped})
+			return
+		}
+		if s.Options.DryRun {
+			report(Event{AssetID: a.ID, Filename: filename, Action: ActionRefreshed})
+			return
+		}
+		if err := WriteSidecar(dir, filename, a.RawJSON); err != nil {
+			report(Event{AssetID: a.ID, Filename: filename, Action: ActionFailed, Err: err})
+			return
+		}
+		report(Event{AssetID: a.ID, Filename: filename, Action: ActionRefreshed})
 		return
 	}
 	if s.Options.DryRun {
