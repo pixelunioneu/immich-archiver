@@ -19,6 +19,11 @@ immich-archiver --url https://photos.example.com --api-key your-user-api-key --d
 On a second run, assets already present on disk (verified by filename + a matching asset ID in
 the sidecar) are skipped, so re-running is cheap.
 
+Because skipped assets never reach the write path, their sidecars are left untouched — an
+archive keeps whatever sidecars it was originally built with. To rewrite them against the
+current server metadata without re-downloading a single original, run with
+`--refresh-sidecars`.
+
 ### Layout
 
 By default, assets land in `<dir>/{year}/{year}-{month}/`, e.g.:
@@ -47,6 +52,7 @@ Live Photos are downloaded as a still + a paired motion video sharing the same b
 | `--concurrency` | `4` | parallel downloads |
 | `--retries` | `3` | retry attempts on network/server errors |
 | `--dry-run` | `false` | preview without writing |
+| `--refresh-sidecars` | `false` | rewrite sidecars of assets already on disk (originals are not re-downloaded) |
 | `--verbose` / `-v` | `false` | log one line per asset instead of a progress summary |
 
 ## Development
