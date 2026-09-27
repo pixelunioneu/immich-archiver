@@ -3,6 +3,7 @@ package immich
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -169,5 +170,85 @@ func TestListAlbumsSharedFilter(t *testing.T) {
 	}
 	if len(albums) != 1 || albums[0].ID != "al1" {
 		t.Fatalf("unexpected albums: %+v", albums)
+	}
+}
+
+// A download that takes longer than the API client's overall timeout must
+// still succeed as long as bytes keep arriving. Regression test for large
+// videos failing with "Client.Timeout ... while reading body".
+func TestDownloadOriginalOutlastsAPITimeout(t *testing.T) {
+	const chunks = 10
+	c, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		for i := 0; i < chunks; i++ {
+			_, _ = w.Write([]byte("x"))
+			w.(http.Flusher).Flush()
+			time.Sleep(30 * time.Millisecond)
+		}
+	})
+	c.HTTPClient.Timeout = 100 * time.Millisecond
+	c.DownloadIdleTimeout = 200 * time.Millisecond
+
+	rc, err := c.DownloadOriginal(context.Background(), "big")
+	if err != nil {
+		t.Fatalf("DownloadOriginal: %v", err)
+	}
+	defer func() { _ = rc.Close() }()
+	got, err := io.ReadAll(rc)
+	if err != nil {
+		t.Fatalf("reading body: %v", err)
+	}
+	if len(got) != chunks {
+		t.Fatalf("got %d bytes, want %d", len(got), chunks)
+	}
+}
+
+// A download whose body stops producing bytes must be aborted after the
+// idle timeout instead of hanging forever.
+func TestDownloadOriginalAbortsWhenBodyStalls(t *testing.T) {
+	c, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte("partial"))
+		w.(http.Flusher).Flush()
+		select {
+		case <-r.Context().Done():
+		case <-time.After(5 * time.Second):
+		}
+	})
+	c.DownloadIdleTimeout = 50 * time.Millisecond
+
+	rc, err := c.DownloadOriginal(context.Background(), "stuck")
+	if err != nil {
+		t.Fatalf("DownloadOriginal: %v", err)
+	}
+	defer func() { _ = rc.Close() }()
+
+	start := time.Now()
+	_, err = io.ReadAll(rc)
+	if !errors.Is(err, ErrDownloadStalled) {
+		t.Fatalf("expected ErrDownloadStalled, got %v", err)
+	}
+	if elapsed := time.Since(start); elapsed > 2*time.Second {
+		t.Fatalf("stall detection took %s", elapsed)
+	}
+}
+
+// A server that never sends response headers must be treated as a stall
+// and retried, then reported as such.
+func TestDownloadOriginalRetriesWhenHeadersStall(t *testing.T) {
+	var calls atomic.Int32
+	c, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		select {
+		case <-r.Context().Done():
+		case <-time.After(5 * time.Second):
+		}
+	})
+	c.DownloadIdleTimeout = 50 * time.Millisecond
+
+	_, err := c.DownloadOriginal(context.Background(), "silent")
+	if !errors.Is(err, ErrDownloadStalled) {
+		t.Fatalf("expected ErrDownloadStalled, got %v", err)
+	}
+	if got, want := calls.Load(), int32(c.Retries+1); got != want {
+		t.Fatalf("got %d attempts, want %d", got, want)
 	}
 }
